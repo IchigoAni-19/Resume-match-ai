@@ -20,7 +20,7 @@ const technicalQuestionSchema = new mongoose.Schema({
 const behavioralQuestionSchema = new mongoose.Schema({
     question: {
         type: String,
-        required: [true, "Technical question is required"]
+        required: [true, "Behavioral question is required"]
     },
     intention: {
         type: String,
@@ -41,7 +41,7 @@ const skillGapSchema = new mongoose.Schema({
     },
     severity: {
         type: String,
-        enum: [ "low", "medium", "high" ],
+        enum: [ "low", "medium", "high"],
         required: [true, " Severity is required"]
     }
 }, {
@@ -64,6 +64,11 @@ const preparationPlanSchema = new mongoose.Schema({
 })
 
 const interviewReportSchema = new mongoose.Schema({
+    user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "users", // This is your User model's collection name!
+        required: [true, "User ID is required"]
+    },
     jobDescription: {
         type: String,
         required: [true, "Job Description is required"]
