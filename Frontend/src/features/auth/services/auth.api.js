@@ -1,8 +1,6 @@
 import axios from "axios";
 
-// FIXED: Changed baseUrl to baseURL
 const api = axios.create({
-    baseURL: 'http://localhost:3000', 
     withCredentials: true
 });
 
