@@ -9,7 +9,7 @@ const app = express()
 app.use(express.json())
 app.use(cookieParser())
 app.use(cors({
-    origin: "http://localhost:5173",
+    origin: true, // Allow any origin for development (or use an array like ["http://localhost:5173", "your-bruno-origin"])
     credentials: true
 }))
 
