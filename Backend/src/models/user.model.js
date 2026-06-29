@@ -1,20 +1,32 @@
-import mongoose, { Schema } from "mongoose";
+import mongoose from "mongoose";
+
+/**
+ * @typedef {Object} IUser
+ * @property {string} username - Unique display name chosen at registration.
+ * @property {string} email    - Unique email address used for login.
+ * @property {string} password - Bcrypt-hashed password (never stored in plain text).
+ */
 
 const userSchema = new mongoose.Schema({
-    username:{
+    username: {
         type: String,
-        unique: [true, "Username already exists"],
-        required: true,
+        unique: true,
+        required: [true, "Username is required"],
+        trim: true,
     },
-    email:{
+    email: {
         type: String,
-        unique: [true, "Account already exists with this email"],
-        required: true,
+        unique: true,
+        required: [true, "Email is required"],
+        lowercase: true,
+        trim: true,
     },
-    password:{
+    password: {
         type: String,
-        required: true,
-    }
-})
-const User = mongoose.model("users", userSchema)
-export default User
+        required: [true, "Password is required"],
+    },
+});
+
+const User = mongoose.model("users", userSchema);
+
+export default User;

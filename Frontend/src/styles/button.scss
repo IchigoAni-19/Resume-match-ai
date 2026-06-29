@@ -5,15 +5,25 @@
     padding-block: 0.75rem;
     border-radius: 1rem;
     cursor: pointer;
-
     transition: all 0.3s ease-in-out;
 
     &.primary-button{
-        background-color: #ef0a53dc;
+        background-color: var(--accent);
         color: white;
     }
 
     &:active{
         transform: scale(0.9);
+    }
+
+    &.ghost-button {
+        background: transparent;
+        color: var(--text-primary);
+        padding: 0.5rem;
+        border-radius: 0.5rem;
+
+        &:hover {
+            background: var(--bg-secondary);
+        }
     }
 }

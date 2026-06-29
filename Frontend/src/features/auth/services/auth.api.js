@@ -1,50 +1,48 @@
 import axios from "axios";
 
+/**
+ * Axios instance with credentials enabled so the JWT cookie is
+ * automatically sent on every request.
+ */
 const api = axios.create({
-    withCredentials: true
+    withCredentials: true,
 });
 
+/**
+ * Registers a new user account.
+ * @param {{ username: string, email: string, password: string }} params
+ * @returns {Promise<{ message: string, user: object }>}
+ */
 export async function register({ username, email, password }) {
-    try {
-        const response = await api.post('/api/auth/register', {
-            username, email, password
-        });
-        return response.data;
-    } catch (err) {
-        console.log(err);
-        throw err; // Important: Rethrow the error so your UI knows login failed!
-    }
+    const response = await api.post('/api/auth/register', { username, email, password });
+    return response.data;
 }
 
+/**
+ * Logs in with email and password.
+ * @param {{ email: string, password: string }} params
+ * @returns {Promise<{ message: string, user: object }>}
+ */
 export async function login({ email, password }) {
-    try {
-        const response = await api.post('/api/auth/login', {
-            email, password
-        });
-        return response.data;
-    } catch (err) {
-        console.log(err);
-        throw err; 
-    }
+    const response = await api.post('/api/auth/login', { email, password });
+    return response.data;
 }
 
+/**
+ * Logs out the current user — clears the server-side cookie and blacklists the token.
+ * @returns {Promise<{ message: string }>}
+ */
 export async function logout() {
-    try {
-        const response = await api.get('/api/auth/logout');
-        return response.data;
-    } catch (err) {
-        console.log(err);
-        throw err;
-    }
+    const response = await api.get('/api/auth/logout');
+    return response.data;
 }
 
+/**
+ * Returns the currently authenticated user's profile from the server.
+ * Used on app load to restore session state.
+ * @returns {Promise<{ message: string, user: object }>}
+ */
 export async function getMe() {
-    try {
-        // FIXED: Added 'await' before api.get
-        const response = await api.get('/api/auth/get-me');
-        return response.data;
-    } catch (err) {
-        console.log(err);
-        throw err;
-    }
+    const response = await api.get('/api/auth/get-me');
+    return response.data;
 }
