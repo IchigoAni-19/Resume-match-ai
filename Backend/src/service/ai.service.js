@@ -2,6 +2,18 @@ import { GoogleGenAI } from "@google/genai";
 import z from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import puppeteer from "puppeteer";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = dirname(__filename);
+
+/** Load the resume HTML template once at module level (it never changes at runtime) */
+const RESUME_TEMPLATE = readFileSync(
+    join(__dirname, "../templates/resume.html"),
+    "utf-8"
+);
 
 /**
  * Returns true if MOCK_AI mode is enabled.
@@ -15,7 +27,7 @@ const isMock = () => process.env.MOCK_AI === "true";
  * Returns the configured Gemini model name from env, with a safe default.
  * @returns {string}
  */
-const getModel = () => process.env.GEMINI_MODEL || "gemini-2.0-flash-lite";
+const getModel = () => process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 /**
  * Creates a Gemini AI client using the API key from env.
@@ -86,6 +98,39 @@ const interviewReportSchema = z.object({
         .describe("Day-wise preparation plan"),
 });
 
+/**
+ * Zod schema for the structured resume data returned by Gemini.
+ * The AI generates structured JSON; we inject it into the HTML template.
+ * This keeps layout concerns in the template and content concerns in the AI.
+ */
+const resumeDataSchema = z.object({
+    name:       z.string().describe("Full name of the candidate extracted from the resume"),
+    contact:    z.string().describe("Contact line: Phone | Email | LinkedIn URL | GitHub URL — use HTML <a> tags for links"),
+    summary:    z.string().describe("2-3 sentence professional summary targeting the job description with ATS keywords"),
+    projects:   z.string().describe("HTML snippet: multiple <div class='project'> blocks, each with project-header, tech stack italic line, and ul/li bullet points starting with action verbs"),
+    languages:  z.string().describe("Comma-separated list of programming languages"),
+    frameworks: z.string().describe("Comma-separated list of frameworks, libraries and tools"),
+});
+
+// ── Template helper ───────────────────────────────────────────────────────────
+
+/**
+ * Injects structured resume data into the HTML template by replacing
+ * {{placeholder}} tokens with actual content.
+ *
+ * @param {object} data - Fields: name, contact, summary, projects, languages, frameworks
+ * @returns {string} Complete HTML document ready for Puppeteer
+ */
+function renderResumeTemplate(data) {
+    return RESUME_TEMPLATE
+        .replace("{{name}}",       data.name       || "Candidate")
+        .replace("{{contact}}",    data.contact    || "")
+        .replace("{{summary}}",    data.summary    || "")
+        .replace("{{projects}}",   data.projects   || "")
+        .replace("{{languages}}",  data.languages  || "")
+        .replace("{{frameworks}}", data.frameworks || "");
+}
+
 // ── Mock helpers ──────────────────────────────────────────────────────────────
 
 /**
@@ -131,145 +176,44 @@ function getMockInterviewReport({ jobDescription }) {
 }
 
 /**
- * Builds a professional single-column HTML resume matching the standard
- * "Harsh Patel" style resume from the images:
- * - Centered name + contact bar at top
- * - Bold section titles with a full-width bottom border
- * - Left-aligned content, bullet points, inline bold labels for skills
- * - White background, black text, no colours — clean ATS-friendly layout
- *
- * Used when MOCK_AI=true so download works without a Gemini API key.
+ * Returns mock structured resume data using the same schema as the real AI response.
+ * Parses as much real content from the resume/selfDescription as possible.
+ * Used when MOCK_AI=true so the template renders with actual candidate content.
  *
  * @param {{ resume: string, selfDescription: string, jobDescription: string }} params
- * @returns {string} HTML string ready for Puppeteer PDF conversion
+ * @returns {import('zod').infer<typeof resumeDataSchema>}
  */
-function getMockResumeHtml({ resume, selfDescription, jobDescription }) {
+function getMockResumeData({ resume, selfDescription, jobDescription }) {
     const targetRole = jobDescription?.split("\n")[0]?.replace(/^Role:\s*/i, "").trim() || "Software Engineer";
-    const sourceText  = (resume?.trim() || selfDescription?.trim() || "").slice(0, 3000);
-
-    // Split into non-empty lines to use as content bullets
+    const sourceText = (resume?.trim() || selfDescription?.trim() || "").slice(0, 3000);
     const lines = sourceText.split(/\n+/).map(l => l.trim()).filter(Boolean);
 
-    // Render the raw content as bullet points under "Experience & Background"
-    const bulletItems = lines.length
-        ? lines.slice(0, 20).map(l => `<li>${l}</li>`).join("\n")
-        : "<li>Full-stack development with a focus on scalable, production-ready web applications.</li>";
+    // Build bullet items from actual resume lines (max 8 meaningful lines)
+    const bullets = lines.slice(0, 8).map(l => `<li>${l}</li>`).join("\n") ||
+        "<li>Engineered full-stack web applications using React and Node.js.</li>" +
+        "<li>Implemented RESTful APIs with Express.js and MongoDB.</li>" +
+        "<li>Deployed applications using Git, GitHub, and CI/CD pipelines.</li>";
 
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  body {
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 10.5pt;
-    color: #000;
-    background: #fff;
-    padding: 28px 40px;
-    line-height: 1.45;
-  }
-
-  /* ── Header ── */
-  .name {
-    text-align: center;
-    font-size: 22pt;
-    font-weight: 700;
-    margin-bottom: 4px;
-  }
-  .contact {
-    text-align: center;
-    font-size: 9.5pt;
-    color: #333;
-    margin-bottom: 14px;
-  }
-  .contact a { color: #1155cc; text-decoration: none; }
-  .contact span { margin: 0 5px; color: #555; }
-
-  /* ── Section ── */
-  .section { margin-bottom: 14px; }
-  .section-title {
-    font-size: 11pt;
-    font-weight: 700;
-    border-bottom: 1px solid #000;
-    padding-bottom: 2px;
-    margin-bottom: 7px;
-  }
-
-  /* ── Education row ── */
-  .edu-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-  }
-  .edu-row .left  { font-weight: 700; }
-  .edu-row .right { font-style: italic; font-size: 9.5pt; color: #333; }
-
-  /* ── Bullet lists ── */
-  ul { padding-left: 18px; margin: 4px 0; }
-  li { margin-bottom: 3px; }
-
-  /* ── Skills (inline bold labels) ── */
-  .skill-line { margin-bottom: 3px; }
-  .skill-label { font-weight: 700; }
-</style>
-</head>
-<body>
-
-  <!-- Name & Contact -->
-  <div class="name">Candidate</div>
-  <div class="contact">
-    +91-XXXXXXXXXX
-    <span>|</span> candidate@email.com
-    <span>|</span> <a href="#">LinkedIn</a>
-    <span>|</span> <a href="#">GitHub</a>
+    const projectsHtml = `
+<div class="project">
+  <div class="project-header">
+    <span>${targetRole} Project</span>
+    <span>2024</span>
   </div>
+  <p class="project-tech"><i>Tech Stack: React.js, Node.js, Express.js, MongoDB</i></p>
+  <ul>
+    ${bullets}
+  </ul>
+</div>`;
 
-  <!-- Education -->
-  <div class="section">
-    <div class="section-title">Education</div>
-    <div class="edu-row">
-      <span class="left">University Name</span>
-      <span class="right">2022 – 2026</span>
-    </div>
-    <div class="edu-row">
-      <span>B.Tech – Computer Science / Electronics Engineering</span>
-      <span class="right" style="font-style:italic;color:#333">City, State</span>
-    </div>
-    <div style="margin-top:3px">CGPA: 8.0</div>
-    <div style="margin-top:3px">
-      <strong>Relevant Coursework:</strong>
-      Data Structures and Algorithms &nbsp;|&nbsp; Object-Oriented Programming &nbsp;|&nbsp; Operating Systems
-    </div>
-  </div>
-
-  <!-- Experience / Background from resume text -->
-  <div class="section">
-    <div class="section-title">Experience &amp; Background</div>
-    <div><strong>${targetRole} — Candidate</strong></div>
-    <ul>${bulletItems}</ul>
-  </div>
-
-  <!-- Technical Skills -->
-  <div class="section">
-    <div class="section-title">Technical Skills</div>
-    <div class="skill-line"><span class="skill-label">Languages:</span> JavaScript, TypeScript, Python, HTML5, CSS3</div>
-    <div class="skill-line"><span class="skill-label">Developer Tools:</span> Git, GitHub, VS Code, Postman, npm, MongoDB Compass</div>
-    <div class="skill-line"><span class="skill-label">Technologies/Frameworks:</span> React.js, Node.js, Express.js, MongoDB, REST API, Tailwind CSS</div>
-    <div class="skill-line"><span class="skill-label">Coursework:</span> Data Structures and Algorithms, Object-Oriented Programming, Operating Systems</div>
-    <div class="skill-line"><span class="skill-label">Professional Skills:</span> Problem Solving, Debugging, Communication</div>
-  </div>
-
-  <!-- Target Role note -->
-  <div class="section">
-    <div class="section-title">Target Position</div>
-    <p>${targetRole}</p>
-    ${selfDescription?.trim() ? `<p style="margin-top:5px;color:#333">${selfDescription.trim().slice(0, 400)}</p>` : ""}
-  </div>
-
-</body>
-</html>`;
+    return {
+        name:       "Candidate",
+        contact:    `+91-XXXXXXXXXX <span class="sep">|</span> candidate@email.com <span class="sep">|</span> <a href="#">LinkedIn</a> <span class="sep">|</span> <a href="#">GitHub</a>`,
+        summary:    selfDescription?.trim().slice(0, 300) || `Motivated ${targetRole} with hands-on experience in full-stack development, building scalable web applications, and contributing to production systems.`,
+        projects:   projectsHtml,
+        languages:  "JavaScript, TypeScript, Python, HTML5, CSS3",
+        frameworks: "React.js, Node.js, Express.js, MongoDB, REST API, Git, Tailwind CSS",
+    };
 }
 
 // ── Core AI functions ─────────────────────────────────────────────────────────
@@ -344,44 +288,64 @@ async function generatePdfFromHtml(htmlContent) {
 }
 
 /**
- * Generates a tailored resume PDF for a candidate using Gemini AI.
+ * Generates a tailored, ATS-optimized resume PDF for a candidate.
+ *
+ * Architecture:
+ *   1. Gemini AI extracts structured data (name, contact, summary, projects, skills)
+ *      from the candidate's raw resume + self-description, tailored to the job description.
+ *   2. The structured data is injected into a fixed HTML template (resume.html).
+ *   3. Puppeteer renders the final HTML to a PDF buffer.
+ *
+ * This keeps layout stable and consistent while letting the AI focus purely on content.
+ *
  * @param {{ resume: string, selfDescription: string, jobDescription: string }} params
  * @returns {Promise<Buffer>} PDF buffer
  */
 async function generateResumePdf({ resume, selfDescription, jobDescription }) {
     if (isMock()) {
         console.log("[MOCK_AI] Returning sample resume PDF.");
-        return generatePdfFromHtml(getMockResumeHtml({ resume, selfDescription, jobDescription }));
+        const mockData = getMockResumeData({ resume, selfDescription, jobDescription });
+        return generatePdfFromHtml(renderResumeTemplate(mockData));
     }
 
     const ai = getAiClient();
 
-    const resumePdfSchema = z.object({
-        html: z.string().describe("The HTML content of the resume which can be converted to PDF using any library like puppeteer"),
-    });
+    const prompt = `Act as a world-class ATS-optimized Resume Engineer. Your task is to process the incoming resume data, self-description, and job description to produce a professional, structured resume.
 
-    const prompt = `Generate resume for a candidate with the following details:
-Resume: ${resume}
-Self Description: ${selfDescription}
+Resume: ${resume || "Not provided"}
+Self Description: ${selfDescription || "Not provided"}
 Job Description: ${jobDescription}
 
-the response should be a JSON object with a single field "html" which contains the HTML content of the resume which can be converted to PDF using any library like puppeteer.
-The resume should be tailored for the given job description and should highlight the candidate's strengths and relevant experience. The HTML content should be well-formatted and structured, making it easy to read and visually appealing.
-The content of resume should be not sound like it's generated by AI and should be as close as possible to a real human-written resume.
-you can highlight the content using some colors or different font styles but the overall design should be simple and professional.
-The content should be ATS friendly, i.e. it should be easily parsable by ATS systems without losing important information.
-The resume should not be so lengthy, it should ideally be 1-2 pages long when converted to PDF. Focus on quality rather than quantity and make sure to include all the relevant information that can increase the candidate's chances of getting an interview call for the given job description.`;
+Your output MUST be a strict JSON object with no markdown or preamble:
+{
+  "name": "Full Name",
+  "contact": "Phone | Email | <a href='LINKEDIN_URL'>LinkedIn</a> | <a href='GITHUB_URL'>GitHub</a>",
+  "summary": "2-3 sentence professional summary targeting the job description.",
+  "projects": "HTML snippet: Use multiple <div class='project'> blocks. Each must have <div class='project-header'><span>Name</span> <span>Year</span></div><p class='project-tech'><i>Tech Stack: [Tech]</i></p><ul><li>Action-verb bullet 1</li><li>Action-verb bullet 2</li><li><a href='GITHUB'>Source</a> | <a href='LIVE'>Live</a></li></ul>",
+  "languages": "CSV string of programming languages",
+  "frameworks": "CSV string of frameworks, libraries and tools"
+}
+
+Critical Instructions:
+1. DATA INTEGRITY: Use ONLY the data provided in the inputs. Do not invent experience, projects, or credentials.
+2. ATS OPTIMIZATION: Ensure the summary contains top keywords from the provided job description.
+3. FORMATTING: Ensure the projects HTML string is valid, semantic HTML. Do not merge projects; each project must have its own <div class='project'> block with its own tech stack and bullet points.
+4. ACTION ORIENTATION: Every bullet point must start with a strong action verb (e.g., Architected, Engineered, Deployed, Implemented, Designed).
+5. STYLE: Keep it concise and 1-2 pages in length.
+6. LINKS: Extract and format LinkedIn, GitHub, and live project links clearly from the resume text. If a link is not found, use "#" as the href.
+7. If resume or self-description is sparse, write reasonable bullets based on the skills and technologies mentioned.`;
 
     const response = await ai.models.generateContent({
         model: getModel(),
         contents: prompt,
         config: {
             responseMimeType: "application/json",
-            responseSchema: zodToJsonSchema(resumePdfSchema),
+            responseSchema: zodToJsonSchema(resumeDataSchema),
         },
     });
 
-    const { html } = JSON.parse(response.text);
+    const resumeData = resumeDataSchema.parse(JSON.parse(response.text));
+    const html = renderResumeTemplate(resumeData);
     return generatePdfFromHtml(html);
 }
 
