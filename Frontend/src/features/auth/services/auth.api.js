@@ -1,12 +1,6 @@
-import axios from "axios";
+// import axios from "axios";
+import api from "./api";
 
-/**
- * Axios instance with credentials enabled so the JWT cookie is
- * automatically sent on every request.
- */
-const api = axios.create({
-    withCredentials: true,
-});
 
 /**
  * Registers a new user account.
