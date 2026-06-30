@@ -1,4 +1,4 @@
-import api from './api.js'
+import api from '../../../lib/api.js'
 
 /**
  * @description Service to generate interview report based on user self description, resume and job description.
