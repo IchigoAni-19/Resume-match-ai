@@ -3,11 +3,35 @@ import z from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import puppeteer from "puppeteer";
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash-lite";
-const MOCK_AI = process.env.MOCK_AI === "true";
+/**
+ * Returns true if MOCK_AI mode is enabled.
+ * Arrow function — evaluated lazily at call time, not at module load.
+ * This guarantees dotenv has already populated process.env before we read it.
+ * @returns {boolean}
+ */
+const isMock = () => process.env.MOCK_AI === "true";
 
-/** Singleton Gemini client — instantiated once when the module loads */
-const ai = MOCK_AI ? null : new GoogleGenAI({ apiKey: process.env.GOOGLE_GENAI_API_KEY });
+/**
+ * Returns the configured Gemini model name from env, with a safe default.
+ * @returns {string}
+ */
+const getModel = () => process.env.GEMINI_MODEL || "gemini-2.0-flash-lite";
+
+/**
+ * Creates a Gemini AI client using the API key from env.
+ * Called lazily inside functions so the key is always resolved after dotenv.config().
+ * Throws a clear error immediately if the key is missing or looks invalid.
+ * @returns {GoogleGenAI}
+ */
+function getAiClient() {
+    const apiKey = process.env.GOOGLE_GENAI_API_KEY;
+    if (!apiKey) {
+        throw new Error(
+            "GOOGLE_GENAI_API_KEY is not set. Add it to Backend/.env or set MOCK_AI=true."
+        );
+    }
+    return new GoogleGenAI({ apiKey });
+}
 
 // ── Zod schema for the AI-generated interview report ──────────────────────────
 
@@ -107,28 +131,145 @@ function getMockInterviewReport({ jobDescription }) {
 }
 
 /**
- * Returns HTML for a mock resume PDF (used when MOCK_AI=true).
- * @param {{ selfDescription: string, jobDescription: string }} params
- * @returns {string} HTML string
+ * Builds a professional single-column HTML resume matching the standard
+ * "Harsh Patel" style resume from the images:
+ * - Centered name + contact bar at top
+ * - Bold section titles with a full-width bottom border
+ * - Left-aligned content, bullet points, inline bold labels for skills
+ * - White background, black text, no colours — clean ATS-friendly layout
+ *
+ * Used when MOCK_AI=true so download works without a Gemini API key.
+ *
+ * @param {{ resume: string, selfDescription: string, jobDescription: string }} params
+ * @returns {string} HTML string ready for Puppeteer PDF conversion
  */
-function getMockResumeHtml({ selfDescription, jobDescription }) {
-    const summary = selfDescription?.slice(0, 300) || "Experienced software engineer.";
-    const role = jobDescription?.split("\n")[0]?.replace(/^Role:\s*/i, "").trim() || "Software Engineer";
+function getMockResumeHtml({ resume, selfDescription, jobDescription }) {
+    const targetRole = jobDescription?.split("\n")[0]?.replace(/^Role:\s*/i, "").trim() || "Software Engineer";
+    const sourceText  = (resume?.trim() || selfDescription?.trim() || "").slice(0, 3000);
+
+    // Split into non-empty lines to use as content bullets
+    const lines = sourceText.split(/\n+/).map(l => l.trim()).filter(Boolean);
+
+    // Render the raw content as bullet points under "Experience & Background"
+    const bulletItems = lines.length
+        ? lines.slice(0, 20).map(l => `<li>${l}</li>`).join("\n")
+        : "<li>Full-stack development with a focus on scalable, production-ready web applications.</li>";
 
     return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><style>
-body{font-family:Arial,sans-serif;color:#222;margin:0;padding:24px;line-height:1.5}
-h1{margin:0 0 4px;font-size:28px;color:#1a365d}
-h2{margin:24px 0 8px;font-size:16px;color:#2b6cb0;border-bottom:1px solid #bee3f8}
-p,li{font-size:14px}
-.header{margin-bottom:20px}
-.tag{color:#4a5568;font-size:14px}
-</style></head><body>
-<div class="header"><h1>Candidate Resume</h1><p class="tag">Target role: ${role} (mock PDF)</p></div>
-<h2>Summary</h2><p>${summary}</p>
-<h2>Skills</h2><ul><li>JavaScript, React, Node.js</li><li>REST APIs, MongoDB, Git</li><li>Agile, CI/CD, automated testing</li></ul>
-<h2>Experience</h2><p>Full-stack development with focus on scalable web applications and cross-functional delivery.</p>
-</body></html>`;
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 10.5pt;
+    color: #000;
+    background: #fff;
+    padding: 28px 40px;
+    line-height: 1.45;
+  }
+
+  /* ── Header ── */
+  .name {
+    text-align: center;
+    font-size: 22pt;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .contact {
+    text-align: center;
+    font-size: 9.5pt;
+    color: #333;
+    margin-bottom: 14px;
+  }
+  .contact a { color: #1155cc; text-decoration: none; }
+  .contact span { margin: 0 5px; color: #555; }
+
+  /* ── Section ── */
+  .section { margin-bottom: 14px; }
+  .section-title {
+    font-size: 11pt;
+    font-weight: 700;
+    border-bottom: 1px solid #000;
+    padding-bottom: 2px;
+    margin-bottom: 7px;
+  }
+
+  /* ── Education row ── */
+  .edu-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .edu-row .left  { font-weight: 700; }
+  .edu-row .right { font-style: italic; font-size: 9.5pt; color: #333; }
+
+  /* ── Bullet lists ── */
+  ul { padding-left: 18px; margin: 4px 0; }
+  li { margin-bottom: 3px; }
+
+  /* ── Skills (inline bold labels) ── */
+  .skill-line { margin-bottom: 3px; }
+  .skill-label { font-weight: 700; }
+</style>
+</head>
+<body>
+
+  <!-- Name & Contact -->
+  <div class="name">Candidate</div>
+  <div class="contact">
+    +91-XXXXXXXXXX
+    <span>|</span> candidate@email.com
+    <span>|</span> <a href="#">LinkedIn</a>
+    <span>|</span> <a href="#">GitHub</a>
+  </div>
+
+  <!-- Education -->
+  <div class="section">
+    <div class="section-title">Education</div>
+    <div class="edu-row">
+      <span class="left">University Name</span>
+      <span class="right">2022 – 2026</span>
+    </div>
+    <div class="edu-row">
+      <span>B.Tech – Computer Science / Electronics Engineering</span>
+      <span class="right" style="font-style:italic;color:#333">City, State</span>
+    </div>
+    <div style="margin-top:3px">CGPA: 8.0</div>
+    <div style="margin-top:3px">
+      <strong>Relevant Coursework:</strong>
+      Data Structures and Algorithms &nbsp;|&nbsp; Object-Oriented Programming &nbsp;|&nbsp; Operating Systems
+    </div>
+  </div>
+
+  <!-- Experience / Background from resume text -->
+  <div class="section">
+    <div class="section-title">Experience &amp; Background</div>
+    <div><strong>${targetRole} — Candidate</strong></div>
+    <ul>${bulletItems}</ul>
+  </div>
+
+  <!-- Technical Skills -->
+  <div class="section">
+    <div class="section-title">Technical Skills</div>
+    <div class="skill-line"><span class="skill-label">Languages:</span> JavaScript, TypeScript, Python, HTML5, CSS3</div>
+    <div class="skill-line"><span class="skill-label">Developer Tools:</span> Git, GitHub, VS Code, Postman, npm, MongoDB Compass</div>
+    <div class="skill-line"><span class="skill-label">Technologies/Frameworks:</span> React.js, Node.js, Express.js, MongoDB, REST API, Tailwind CSS</div>
+    <div class="skill-line"><span class="skill-label">Coursework:</span> Data Structures and Algorithms, Object-Oriented Programming, Operating Systems</div>
+    <div class="skill-line"><span class="skill-label">Professional Skills:</span> Problem Solving, Debugging, Communication</div>
+  </div>
+
+  <!-- Target Role note -->
+  <div class="section">
+    <div class="section-title">Target Position</div>
+    <p>${targetRole}</p>
+    ${selfDescription?.trim() ? `<p style="margin-top:5px;color:#333">${selfDescription.trim().slice(0, 400)}</p>` : ""}
+  </div>
+
+</body>
+</html>`;
 }
 
 // ── Core AI functions ─────────────────────────────────────────────────────────
@@ -139,10 +280,12 @@ p,li{font-size:14px}
  * @returns {Promise<import('zod').infer<typeof interviewReportSchema>>}
  */
 async function generateInterviewReport({ resume, jobDescription, selfDescription }) {
-    if (MOCK_AI) {
+    if (isMock()) {
         console.log("[MOCK_AI] Returning sample interview report.");
         return getMockInterviewReport({ jobDescription });
     }
+
+    const ai = getAiClient();
 
     const prompt = `You are an expert career coach and interview preparation specialist.
 Generate a detailed interview report for a candidate with the following details:
@@ -167,7 +310,7 @@ Return ONLY a valid JSON object matching this schema exactly — no markdown, no
 }`;
 
     const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
+        model: getModel(),
         contents: prompt,
         config: { responseMimeType: "application/json" },
     });
@@ -206,31 +349,31 @@ async function generatePdfFromHtml(htmlContent) {
  * @returns {Promise<Buffer>} PDF buffer
  */
 async function generateResumePdf({ resume, selfDescription, jobDescription }) {
-    if (MOCK_AI) {
+    if (isMock()) {
         console.log("[MOCK_AI] Returning sample resume PDF.");
-        return generatePdfFromHtml(getMockResumeHtml({ selfDescription, jobDescription }));
+        return generatePdfFromHtml(getMockResumeHtml({ resume, selfDescription, jobDescription }));
     }
 
+    const ai = getAiClient();
+
     const resumePdfSchema = z.object({
-        html: z.string().describe("The HTML content of the resume, suitable for PDF conversion via Puppeteer"),
+        html: z.string().describe("The HTML content of the resume which can be converted to PDF using any library like puppeteer"),
     });
 
-    const prompt = `Generate a tailored, ATS-friendly resume in HTML for this candidate:
-
-Resume: ${resume || "Not provided"}
-Self Description: ${selfDescription || "Not provided"}
+    const prompt = `Generate resume for a candidate with the following details:
+Resume: ${resume}
+Self Description: ${selfDescription}
 Job Description: ${jobDescription}
 
-Return a JSON object with a single field "html" containing well-formatted HTML.
-Requirements:
-- Professional and clean design, simple colour accents
-- ATS-friendly structure (parseable, no tables for layout)
-- 1-2 pages when printed to A4
-- Content should read naturally, not AI-generated
-- Highlight skills and experience relevant to the job description`;
+the response should be a JSON object with a single field "html" which contains the HTML content of the resume which can be converted to PDF using any library like puppeteer.
+The resume should be tailored for the given job description and should highlight the candidate's strengths and relevant experience. The HTML content should be well-formatted and structured, making it easy to read and visually appealing.
+The content of resume should be not sound like it's generated by AI and should be as close as possible to a real human-written resume.
+you can highlight the content using some colors or different font styles but the overall design should be simple and professional.
+The content should be ATS friendly, i.e. it should be easily parsable by ATS systems without losing important information.
+The resume should not be so lengthy, it should ideally be 1-2 pages long when converted to PDF. Focus on quality rather than quantity and make sure to include all the relevant information that can increase the candidate's chances of getting an interview call for the given job description.`;
 
     const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
+        model: getModel(),
         contents: prompt,
         config: {
             responseMimeType: "application/json",

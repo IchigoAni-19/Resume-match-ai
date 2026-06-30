@@ -1,10 +1,14 @@
-import dotenv from "dotenv";
-dotenv.config(); // Must be called before any other imports that read env vars
+/**
+ * Application entry point.
+ *
+ * Import order matters in ESM — env.js MUST be first so that dotenv.config()
+ * runs before any other module reads from process.env at load time.
+ */
+import "./src/config/env.js";
 
 import app from "./src/app.js";
 import connectToDb from "./src/config/database.js";
 
-// Connect to MongoDB before starting the HTTP server
 connectToDb();
 
 if (process.env.MOCK_AI === "true") {
