@@ -339,11 +339,15 @@ Mock responses are schema-validated and match the real response shape exactly, s
 
 ## 👨‍💻 Author
 
-**Harsh Patel**
+<div align="center">
 
-[![GitHub](https://img.shields.io/badge/GitHub-HarshPatel5940-181717?style=flat-square&logo=github&logoColor=white)](https://github.com/IchigoAni-19)
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Harsh_Patel-0077B5?style=flat-square&logo=linkedin&logoColor=white)](https://linkedin.com/in/harshpatel5940)
+### Harsh Patel  
+<sub>GitHub: <strong>@IchigoAni-19</strong></sub>
 
+<br/>
+
+[![GitHub](https://img.shields.io/badge/GitHub-IchigoAni--19-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/IchigoAni-19)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Harsh_Patel-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/harsh-patel-bb5598268/)
 
 ---
 
