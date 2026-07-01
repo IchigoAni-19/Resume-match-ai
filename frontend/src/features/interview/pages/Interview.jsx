@@ -60,14 +60,43 @@ const Interview = () => {
     const [ activeNav, setActiveNav ] = useState('technical')
     const { report, getReportById, loading, getResumePdf } = useInterview()
     const { interviewId } = useParams()
+    const [error, setError] = useState(null)
 
     useEffect(() => {
         if (interviewId) {
             getReportById(interviewId)
+                .then(() => setError(null))
+                .catch((err) => {
+                    console.error("Failed to load report:", err)
+                    setError(err.response?.data?.message || "Failed to load interview plan")
+                })
+
+            getReportById(interviewId).catch((err) => {
+                console.error("Failed to load report:", err)
+                setError(err.response?.data?.message || "Failed to load interview plan")
+            })
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [ interviewId ])
 
+
+    if (error) {
+        return (
+            <div className='interview-page'>
+                <Header />
+                <main className='loading-screen'>
+                    <div className="error-alert" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        </svg>
+                        <h1>{error}</h1>
+                    </div>
+                </main>
+            </div>
+        )
+    }
 
     if (loading || !report) {
         return (

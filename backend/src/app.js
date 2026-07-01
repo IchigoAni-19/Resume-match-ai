@@ -5,15 +5,12 @@ import cors from 'cors'
 import interviewRouter from "./routes/interview.routes.js"
 
 const app = express()
-const isProd = process.env.NODE_ENV === "production"
 
 app.use(express.json({ limit: "1mb" }))
 app.use(cookieParser())
 app.use(cors({
-    // In production CLIENT_ORIGIN must be set on Render to your Vercel URL
-    // e.g. https://resume-match-ai.vercel.app
-    // In development, allow all origins
-    origin: isProd ? process.env.CLIENT_ORIGIN : true,
+    // isProd read lazily — process.env.NODE_ENV is guaranteed populated by env.js
+    origin: process.env.NODE_ENV === "production" ? process.env.CLIENT_ORIGIN : true,
     credentials: true,
 }))
 

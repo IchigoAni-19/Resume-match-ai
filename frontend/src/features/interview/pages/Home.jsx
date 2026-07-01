@@ -5,7 +5,8 @@ import { useNavigate } from 'react-router'
 import Header from '../../common/components/Header.jsx'
 
 const Home = () => {
-    const { loading, generateReport, reports, getReports } = useInterview()
+    const { loading: isGenerating, generateReport, reports, getReports } = useInterview()
+    const [isLoadingReports, setIsLoadingReports] = useState(true)
     const [jobDescription, setJobDescription] = useState("")
     const [selfDescription, setSelfDescription] = useState("")
     const [selectedFile, setSelectedFile] = useState(null)
@@ -15,9 +16,18 @@ const Home = () => {
 
     const navigate = useNavigate()
 
-    // Load recent reports on mount
+    // Load recent reports on mount — runs silently, does not show the generation spinner
     useEffect(() => {
-        getReports()
+        const loadReports = async () => {
+            try {
+                await getReports()
+            } catch (err) {
+                console.error("Failed to load reports:", err)
+            } finally {
+                setIsLoadingReports(false)
+            }
+        }
+        loadReports()
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
@@ -99,7 +109,7 @@ const Home = () => {
         }
     }
 
-    if (loading) {
+    if (isGenerating) {
         return (
             <div className="home-page">
                 <Header />
@@ -267,18 +277,25 @@ const Home = () => {
                 </div>
 
                 {/* Recent Reports List */}
-                {reports.length > 0 && (
+                {(isLoadingReports || reports.length > 0) && (
                     <section className='recent-reports'>
-                        <h2>My Recent Interview Plans</h2>
-                        <ul className='reports-list'>
-                            {reports.map(report => (
-                                <li key={report._id} className='report-item' onClick={() => navigate(`/interview/${report._id}`)}>
-                                    <h3>{report.title || 'Untitled Position'}</h3>
-                                    <p className='report-meta'>Generated on {new Date(report.createdAt).toLocaleDateString()}</p>
-                                    <p className={`match-score ${report.matchScore >= 80 ? 'score--high' : report.matchScore >= 60 ? 'score--mid' : 'score--low'}`}>Match Score: {report.matchScore}%</p>
-                                </li>
-                            ))}
-                        </ul>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <h2>My Recent Interview Plans</h2>
+                            {isLoadingReports && (
+                                <div className="spinner" style={{ width: '16px', height: '16px', borderWidth: '2px' }}></div>
+                            )}
+                        </div>
+                        {!isLoadingReports && (
+                            <ul className='reports-list'>
+                                {reports.map(report => (
+                                    <li key={report._id} className='report-item' onClick={() => navigate(`/interview/${report._id}`)}>
+                                        <h3>{report.title || 'Untitled Position'}</h3>
+                                        <p className='report-meta'>Generated on {new Date(report.createdAt).toLocaleDateString()}</p>
+                                        <p className={`match-score ${report.matchScore >= 80 ? 'score--high' : report.matchScore >= 60 ? 'score--mid' : 'score--low'}`}>Match Score: {report.matchScore}%</p>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
                     </section>
                 )}
 

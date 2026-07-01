@@ -5,6 +5,7 @@ const blacklistTokenSchema = new mongoose.Schema(
         token: {
             type: String,
             required: [true, "Token is required to be added to blacklist"],
+            index: true, // fast O(log n) lookup on every auth check
         },
     },
     { timestamps: true }
